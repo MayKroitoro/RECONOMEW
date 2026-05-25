@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # RECONOMEW — osint.sh
-# Modules: SecurityTrails, Shodan, Email Harvest, Social Intel, JS Discovery, Cloud Enum, Leak Search, Google Dorks
+# Modules: SecurityTrails, Shodan, Email harvest, Social Intel, JS Discovery, Cloud Enum, Leak Search, Google Dorks
 
 # ================================================================
 #  MODULE: CVE LOOKUP
@@ -132,7 +132,6 @@ run_shodan() {
     skip "Shodan (jq not installed)"
   fi
 }
-
 
 # ================================================================
 #  MODULE: EMAIL HARVESTING
@@ -683,7 +682,11 @@ except: pass
         "https://haveibeenpwned.com/api/v3/breachedaccount/${email}?truncateResponse=false" \
         2>/dev/null || true)
       printf "\r\033[2K"
-      if [[ -n "$hibp_out" && "$hibp_out" != *"Account not found"* ]]; then
+      # Only flag as breach if response contains actual breach data (array of objects)
+      # Without API key, HIBP returns 401 — skip that
+      if [[ -n "$hibp_out" ]] && \
+         echo "$hibp_out" | grep -q '"Name"' && \
+         ! echo "$hibp_out" | grep -qi "unauthori\|api key\|Account not found"; then
         local breach_names
         breach_names=$(echo "$hibp_out" | python3 -c "
 import json,sys
@@ -761,7 +764,7 @@ run_js_discovery() {
   local _start_ts; _start_ts=$(date +%s)
   local _elapsed=0
   printf "  \033[0;36m[→]\033[0m URL collection (gau + waybackurls)"
-  while [[ $_elapsed -lt 300 ]]; do
+  while [[ $_elapsed -lt 600 ]]; do
     local _running=false
     [[ -n "$gau_pid" ]] && kill -0 "$gau_pid" 2>/dev/null && _running=true
     [[ -n "$wb_pid" ]]  && kill -0 "$wb_pid"  2>/dev/null && _running=true
@@ -782,8 +785,8 @@ run_js_discovery() {
   [[ -n "$wb_pid" ]]  && kill "$wb_pid"  2>/dev/null || true
   wait 2>/dev/null || true
 
-  if [[ $_elapsed -ge 300 ]]; then
-    warn "URL collection: time limit reached (300s)"
+  if [[ $_elapsed -ge 600 ]]; then
+    warn "URL collection: time limit reached (600s)"
   else
     info "URL collection done - ${_took}s"
   fi
@@ -900,7 +903,7 @@ run_js_discovery() {
     # Priority 1: HTTPS JS from main domain
     local _main_js
     _main_js=$(grep -iE "^https://(www\.)?${DOMAIN}/" "$js_files" 2>/dev/null \
-      | grep -vE "$_noise" | head -150 || true)
+      | grep -vE "$_noise" | head -300 || true)
 
     # Priority 2: HTTP JS from main domain
     local _http_js
@@ -916,7 +919,7 @@ run_js_discovery() {
     _js_scan_list=$(printf "%s
 %s
 %s" "$_main_js" "$_http_js" "$_other_js" \
-      | grep -v "^$" | sort -u | head -150)
+      | grep -v "^$" | sort -u | head -300)
 
     local _js_total; _js_total=$(echo "$_js_scan_list" | grep -c "." 2>/dev/null || echo 0)
     _js_total=${_js_total:-0}
@@ -1770,4 +1773,3 @@ run_google_dorks() {
 
   info "Dork queries generated - included in report"
 }
-
